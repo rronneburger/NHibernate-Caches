@@ -3,7 +3,7 @@
   <PropertyGroup>
     <Product>NHibernate.Caches.SysCache2</Product>
     <Description>Unit tests of cache provider for NHibernate using ASP.NET Cache object.</Description>
-    <TargetFramework>net461</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
     <IsTestProject>true</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
@@ -12,9 +12,12 @@
   </ItemGroup>
   <ItemGroup>
     <Reference Include="System.Configuration" />
-    <Reference Include="System.Web" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="log4net" Version="2.0.17" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="NETStandard.Library" Version="2.0.3" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="4.6.0" />
   </ItemGroup>
 </Project>

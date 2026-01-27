@@ -1,10 +1,10 @@
 using System;
-using System.Web.Caching;
+using System.Runtime.Caching;
 
 namespace NHibernate.Caches.SysCache2
 {
 	/// <summary>
-	/// Creates SqlCacheDependency objects dependent on data changes in a table and registers the dependency for
+	/// Creates SqlChangeMonitor objects dependent on data changes in a table and registers the dependency for
 	/// change notifications if necessary.
 	/// </summary>
 	public class SqlTableCacheDependencyEnlister : ICacheDependencyEnlister
@@ -15,14 +15,18 @@ namespace NHibernate.Caches.SysCache2
 		/// <summary>The name of the table to monitor.</summary>
 		private readonly string tableName;
 
+		/// <summary>The connection string provider.</summary>
+		private readonly IConnectionStringProvider connectionStringProvider;
+
 		/// <summary>
 		/// Initializes a new instance of the <see cref="SqlTableCacheDependencyEnlister"/> class.
 		/// </summary>
 		/// <param name="tableName">Name of the table to monitor.</param>
 		/// <param name="databaseEntryName">The name of the database entry to use for connection information.</param>
+		/// <param name="connectionStringProvider">The connection string provider.</param>
 		/// <exception cref="ArgumentNullException">Thrown if <paramref name="tableName"/> or
 		/// <paramref name="databaseEntryName"/> is null or empty.</exception>
-		public SqlTableCacheDependencyEnlister(string tableName, string databaseEntryName)
+		public SqlTableCacheDependencyEnlister(string tableName, string databaseEntryName, IConnectionStringProvider connectionStringProvider)
 		{
 			//validate the params
 			if (String.IsNullOrEmpty(tableName))
@@ -35,8 +39,14 @@ namespace NHibernate.Caches.SysCache2
 				throw new ArgumentNullException("databaseEntryName");
 			}
 
+			if (connectionStringProvider == null)
+			{
+				throw new ArgumentNullException("connectionStringProvider");
+			}
+
 			this.tableName = tableName;
 			this.databaseEntryName = databaseEntryName;
+			this.connectionStringProvider = connectionStringProvider;
 		}
 
 		#region ICacheDependencyEnlister Members
@@ -47,11 +57,13 @@ namespace NHibernate.Caches.SysCache2
 		/// <returns>
 		/// The cache dependency linked to the notification subscription.
 		/// </returns>
-		public CacheDependency Enlist()
+		public ChangeMonitor Enlist()
 		{
-			//there is no need to enlist in notification subscription for this type of dependency
+			var connectionString = String.IsNullOrEmpty(databaseEntryName)
+				? connectionStringProvider.GetConnectionString()
+				: connectionStringProvider.GetConnectionString(databaseEntryName);
 
-			return new SqlCacheDependency(databaseEntryName, tableName);
+			return new SqlTableChangeMonitor(tableName, connectionString);
 		}
 
 		#endregion

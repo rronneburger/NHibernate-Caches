@@ -1,13 +1,13 @@
 using System;
 using System.Data;
 using System.Data.SqlClient;
+using System.Runtime.Caching;
 using System.Transactions;
-using System.Web.Caching;
 
 namespace NHibernate.Caches.SysCache2
 {
 	/// <summary>
-	/// Creates SqlCacheDependency objects and hooks them up to a query notification based on the command.
+	/// Creates SqlChangeMonitor objects and hooks them up to a query notification based on the command.
 	/// </summary>
 	public class SqlCommandCacheDependencyEnlister : ICacheDependencyEnlister
 	{
@@ -81,10 +81,8 @@ namespace NHibernate.Caches.SysCache2
 		/// <returns>
 		/// The cache dependency linked to the notification subscription.
 		/// </returns>
-		public CacheDependency Enlist()
+		public ChangeMonitor Enlist()
 		{
-			SqlCacheDependency dependency;
-
 			//setup and execute the command that will register the cache dependency for
 			//change notifications. Ensure the dependency command is executed outside any
 			//ambient transaction that may be present.
@@ -102,19 +100,12 @@ namespace NHibernate.Caches.SysCache2
 					if (commandTimeout.HasValue)
 						exeCommand.CommandTimeout = commandTimeout.Value;
 
-					//hook the dependency up to the command
-					dependency = new SqlCacheDependency(exeCommand);
-
-					connection.Open();
-					//execute the query, this will enlist the dependency. Notice that we execute a non query since
-					//we dont need any results
-					exeCommand.ExecuteNonQuery();
+					// MemoryCache does not have a built-in SqlChangeMonitor.
+					// We would need to implement a custom ChangeMonitor that uses SqlDependency.
+					// For now, we'll throw NotSupportedException as this is a non-trivial implementation.
+					throw new NotSupportedException("SqlCommandCacheDependency is not supported with MemoryCache.");
 				}
-
-				transaction.Complete();
 			}
-
-			return dependency;
 		}
 
 		#endregion

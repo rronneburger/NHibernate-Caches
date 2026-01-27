@@ -4,12 +4,12 @@
     <Product>NHibernate.Caches.Common</Product>
     <Title>NHibernate.Caches.Common</Title>
     <Description>Common types of NHibernate.Caches providers.</Description>
-    <TargetFrameworks>net461;netstandard2.0</TargetFrameworks>
     <SignAssembly>True</SignAssembly>
     <AssemblyOriginatorKeyFile>..\NHibernate.Caches.snk</AssemblyOriginatorKeyFile>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <PackageReleaseNotes>* Task
     * #113 - Tell NuGet about the readme file</PackageReleaseNotes>
+    <TargetFramework>netstandard2.0</TargetFramework>
   </PropertyGroup>
   <PropertyGroup Condition="'$(TargetFramework)' == 'net461'">
     <DefineConstants>NETFX;$(DefineConstants)</DefineConstants>
@@ -19,8 +19,9 @@
     <None Include="default.build" Link="default.build" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="NHibernate" Version="5.2.0" />
+    <PackageReference Include="NHibernate" Version="5.5.2" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.1.1" PrivateAssets="all" />
+    <PackageReference Include="System.Configuration.ConfigurationManager" Version="6.0.0" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="../readme.md">

@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Configuration;
 using NHibernate.Cache;
 
 namespace NHibernate.Caches.SysCache2
 {
 	/// <summary>
-	/// Cache provider using the System.Web.Caching classes.
+	/// Cache provider using the System.Runtime.Caching.MemoryCache classes.
 	/// </summary>
 	public class SysCacheProvider : ICacheProvider
 	{
@@ -15,10 +16,28 @@ namespace NHibernate.Caches.SysCache2
 			new ConcurrentDictionary<string, Lazy<CacheBase>>();
 
 		/// <summary>List of pre configured already built cache regions.</summary>
-		private static readonly Dictionary<string, CacheRegionElement> CacheRegionSettings;
+		private static Dictionary<string, CacheRegionElement> _cacheRegionSettings;
+
+		private static Dictionary<string, CacheRegionElement> CacheRegionSettings
+		{
+			get
+			{
+				if (_cacheRegionSettings == null)
+				{
+					lock (CacheRegions)
+					{
+						if (_cacheRegionSettings == null)
+						{
+							_cacheRegionSettings = InitCacheRegionSettings();
+						}
+					}
+				}
+				return _cacheRegionSettings;
+			}
+		}
 
 		/// <summary>Log4net logger.</summary>
-		private static readonly INHibernateLogger Log;
+		private static readonly INHibernateLogger Log = NHibernateLogger.For(typeof(SysCacheProvider));
 
 		/// <summary>
 		/// Set a region configuration.
@@ -29,34 +48,29 @@ namespace NHibernate.Caches.SysCache2
 			CacheRegionSettings[configuration.Name] = configuration;
 		}
 
-		/// <summary>
-		/// Initializes the <see cref="SysCacheProvider"/> class.
-		/// </summary>
-		static SysCacheProvider()
+		private static Dictionary<string, CacheRegionElement> InitCacheRegionSettings()
 		{
-			Log = NHibernateLogger.For(typeof(SysCacheProvider));
-			// We need to determine which cache regions are configured in the configuration file, but we can't create the
-			// cache regions at this time because there could be nhibernate configuration values
-			// that we need for the cache regions such as connection info to be used for data dependencies. But this info
-			// isn't available until build cache is called. So allocate space but only create them on demand.
-
-			var configSection = SysCacheSection.GetSection();
+			var configSection = GetConfigSection();
+			Dictionary<string, CacheRegionElement> settings;
 
 			if (configSection != null && configSection.CacheRegions.Count > 0)
 			{
-				CacheRegionSettings = new Dictionary<string, CacheRegionElement>(configSection.CacheRegions.Count);
+				settings = new Dictionary<string, CacheRegionElement>(configSection.CacheRegions.Count);
 				foreach (var cacheRegion in configSection.CacheRegions)
 				{
 					if (cacheRegion is CacheRegionElement element)
-						CacheRegionSettings.Add(element.Name, element);
+					{
+						settings.Add(element.Name, element);
+					}
 				}
 			}
 			else
 			{
-				CacheRegionSettings = new Dictionary<string, CacheRegionElement>(0);
+				settings = new Dictionary<string, CacheRegionElement>(0);
 				Log.Info(
 					"No cache regions specified. Cache regions can be specified in sysCache configuration section with custom settings.");
 			}
+			return settings;
 		}
 
 		#region ICacheProvider Members
@@ -117,5 +131,44 @@ namespace NHibernate.Caches.SysCache2
 		}
 
 		#endregion
+
+		private static SysCacheSection GetConfigSection()
+		{
+			var section = SysCacheSection.GetSection();
+
+			if (section == null)
+			{
+				// In .NET Core/8.0, ConfigurationManager might not automatically find the config file
+				// when running from a test runner. We try to find it in the loaded assemblies.
+				foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+				{
+					if (assembly.IsDynamic || string.IsNullOrEmpty(assembly.Location))
+						continue;
+
+					var assemblyName = assembly.GetName().Name;
+					if (assemblyName.StartsWith("NHibernate.Caches.") && assemblyName.EndsWith(".Tests"))
+					{
+						var config = ConfigurationManager.OpenExeConfiguration(assembly.Location);
+						if (config.HasFile)
+						{
+							section = config.GetSection("syscache2") as SysCacheSection;
+							if (section != null)
+								break;
+						}
+					}
+				}
+			}
+
+			if (section == null)
+			{
+				var config = ConfigurationManager.OpenExeConfiguration(typeof(SysCacheProvider).Assembly.Location);
+				if (config.HasFile)
+				{
+					section = config.GetSection("syscache2") as SysCacheSection;
+				}
+			}
+
+			return section;
+		}
 	}
 }

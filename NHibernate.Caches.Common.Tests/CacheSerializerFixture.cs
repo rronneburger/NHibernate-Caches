@@ -182,7 +182,9 @@ namespace NHibernate.Caches.Common.Tests
 			Assert.That(copy.Version, Is.EqualTo(original.Version));
 			Assert.That(copy.Version, Is.TypeOf(original.Version.GetType()));
 			Assert.That(copy.Subclass, Is.EqualTo(original.Subclass));
+#pragma warning disable 618
 			Assert.That(copy.AreLazyPropertiesUnfetched, Is.EqualTo(original.AreLazyPropertiesUnfetched));
+#pragma warning restore 618
 			for (var i = 0; i < copy.DisassembledState.Length; i++)
 			{
 				if (original.DisassembledState[i] == null)
@@ -340,7 +342,9 @@ namespace NHibernate.Caches.Common.Tests
 				DisassembledState = GetAllNHibernateTypeValues(),
 				Version = 1,
 				Subclass = "TestClass",
+#pragma warning disable 618
 				AreLazyPropertiesUnfetched = true
+#pragma warning restore 618
 			};
 		}
 

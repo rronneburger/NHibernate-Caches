@@ -1,6 +1,6 @@
 using System;
 using System.Configuration;
-using System.Web.Caching;
+using System.Runtime.Caching;
 
 namespace NHibernate.Caches.SysCache2
 {

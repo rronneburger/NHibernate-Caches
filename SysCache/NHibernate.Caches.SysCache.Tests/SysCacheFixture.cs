@@ -25,7 +25,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Web;
+using System.Runtime.Caching;
 using log4net.Config;
 using NHibernate.Cache;
 using NHibernate.Caches.Common.Tests;
@@ -81,22 +81,22 @@ namespace NHibernate.Caches.SysCache.Tests
 			// add the item
 			cache.Put(key, value);
 
-			Assert.That(HttpRuntime.Cache.Count, Is.GreaterThan(0), "cache is empty");
+			Assert.That(MemoryCache.Default.GetCount(), Is.GreaterThan(0), "cache is empty");
 
-			// clear the System.Web.HttpRuntime.Cache
+			// clear the MemoryCache.Default
 			var keys = new List<string>();
 
-			foreach (DictionaryEntry entry in HttpRuntime.Cache)
+			foreach (var entry in MemoryCache.Default)
 			{
-				keys.Add(entry.Key.ToString());
+				keys.Add(entry.Key);
 			}
 
 			foreach (var cachekey in keys)
 			{
-				HttpRuntime.Cache.Remove(cachekey);
+				MemoryCache.Default.Remove(cachekey);
 			}
 
-			Assert.That(HttpRuntime.Cache.Count, Is.EqualTo(0), "cache isn't empty");
+			Assert.That(MemoryCache.Default.GetCount(), Is.EqualTo(0), "cache isn't empty");
 
 			// make sure we don't get an item
 			var item = cache.Get(key);

@@ -1,7 +1,7 @@
 #region License
 
 //
-//  SysCache - A cache provider for NHibernate using System.Web.Caching.Cache.
+//  SysCache - A cache provider for NHibernate using System.Runtime.Caching.MemoryCache.
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -28,7 +28,7 @@ using NHibernate.Cache;
 namespace NHibernate.Caches.SysCache
 {
 	/// <summary>
-	/// Cache provider using the System.Web.Caching classes.
+	/// Cache provider using the System.Runtime.Caching.MemoryCache.
 	/// </summary>
 	public class SysCacheProvider : ICacheProvider
 	{

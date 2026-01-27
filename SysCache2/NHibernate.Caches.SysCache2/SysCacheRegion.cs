@@ -2,10 +2,9 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.Caching;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Web;
-using System.Web.Caching;
 using NHibernate.Cache;
 using NHibernate.Util;
 using Environment = NHibernate.Cfg.Environment;
@@ -14,7 +13,7 @@ namespace NHibernate.Caches.SysCache2
 {
 	// 6.0 TODO: replace that class by its base
 	/// <summary>
-	/// Pluggable cache implementation using the System.Web.Caching classes and handling SQL dependencies.
+	/// Pluggable cache implementation using the System.Runtime.Caching.MemoryCache classes and handling SQL dependencies.
 	/// </summary>
 	public class SysCacheRegion : SysCacheRegionBase,
 #pragma warning disable 618
@@ -115,7 +114,7 @@ namespace NHibernate.Caches.SysCache2
 	}
 
 	/// <summary>
-	/// Pluggable cache implementation using the System.Web.Caching classes and handling SQL dependencies.
+	/// Pluggable cache implementation using the System.Runtime.Caching.MemoryCache classes and handling SQL dependencies.
 	/// </summary>
 	public abstract class SysCacheRegionBase : CacheBase
 	{
@@ -142,7 +141,7 @@ namespace NHibernate.Caches.SysCache2
 		private readonly string _rootCacheKey;
 
 		/// <summary>The cache for the web application.</summary>
-		private readonly System.Web.Caching.Cache _webCache;
+		private readonly MemoryCache _webCache;
 
 		/// <summary>Indicates if the root cache item has been stored or not.</summary>
 		private bool _isRootItemCached;
@@ -187,7 +186,7 @@ namespace NHibernate.Caches.SysCache2
 				name = "nhibernate";
 			}
 
-			_webCache = HttpRuntime.Cache;
+			_webCache = MemoryCache.Default;
 			_name = name;
 
 			//configure the cache region based on the configured settings and any relevant nhibernate settings
@@ -304,11 +303,22 @@ namespace NHibernate.Caches.SysCache2
 				}
 			}
 
-			_webCache.Insert(
-				cacheKey, new DictionaryEntry(key, value), new CacheDependency(null, new[] {_rootCacheKey}),
-				expiration ?? System.Web.Caching.Cache.NoAbsoluteExpiration,
-				slidingExpiration ?? System.Web.Caching.Cache.NoSlidingExpiration,
-				_priority, null);
+			var policy = new CacheItemPolicy
+			{
+				Priority = _priority,
+			};
+			policy.ChangeMonitors.Add(_webCache.CreateCacheEntryChangeMonitor(new[] { _rootCacheKey }));
+
+			if (slidingExpiration.HasValue)
+			{
+				policy.SlidingExpiration = slidingExpiration.Value;
+			}
+			else if (expiration.HasValue)
+			{
+				policy.AbsoluteExpiration = new DateTimeOffset(expiration.Value);
+			}
+
+			_webCache.Set(cacheKey, new DictionaryEntry(key, value), policy);
 		}
 
 		/// <inheritdoc />
@@ -458,7 +468,8 @@ namespace NHibernate.Caches.SysCache2
 					Log.Debug("configuring sql table dependency, '{0}' using table, '{1}', and database entry. '{2}'",
 					                 tableConfig.Name, tableConfig.TableName, tableConfig.DatabaseEntryName);
 
-					var tableEnlister = new SqlTableCacheDependencyEnlister(tableConfig.TableName, tableConfig.DatabaseEntryName);
+					IConnectionStringProvider tableConnectionStringProvider = new ConfigConnectionStringProvider();
+					var tableEnlister = new SqlTableCacheDependencyEnlister(tableConfig.TableName, tableConfig.DatabaseEntryName, tableConnectionStringProvider);
 
 					_dependencyEnlisters.Add(tableEnlister);
 				}
@@ -550,37 +561,24 @@ namespace NHibernate.Caches.SysCache2
 		{
 			Log.Debug("Creating root cache entry for cache region: {0}", _name);
 
-			//register ant cache dependencies for change notifications
-			//and build an aggragate dependency if multiple dependencies exist
-			CacheDependency rootCacheDependency = null;
+			var policy = new CacheItemPolicy
+			{
+				Priority = _priority,
+				RemovedCallback = RootCacheItemRemovedCallback
+			};
 
 			if (_dependencyEnlisters.Count > 0)
 			{
-				var dependencies = new List<CacheDependency>(_dependencyEnlisters.Count);
-
 				foreach (var enlister in _dependencyEnlisters)
 				{
 					Log.Debug("Enlisting cache dependency for change notification");
-					dependencies.Add(enlister.Enlist());
-				}
-
-				if (dependencies.Count == 1)
-				{
-					rootCacheDependency = dependencies[0];
-				}
-				else
-				{
-					var jointDependency = new AggregateCacheDependency();
-					jointDependency.Add(dependencies.ToArray());
-
-					rootCacheDependency = jointDependency;
+					policy.ChangeMonitors.Add(enlister.Enlist());
 				}
 
 				Log.Debug("Attaching cache dependencies to root cache entry. Cache entry will be removed when change is detected.");
 			}
 
-			_webCache.Add(_rootCacheKey, _rootCacheKey, rootCacheDependency, System.Web.Caching.Cache.NoAbsoluteExpiration,
-			              System.Web.Caching.Cache.NoSlidingExpiration, _priority, RootCacheItemRemovedCallback);
+			_webCache.Set(_rootCacheKey, _rootCacheKey, policy);
 
 			//flag the root cache item as beeing cached
 			_isRootItemCached = true;
@@ -589,18 +587,15 @@ namespace NHibernate.Caches.SysCache2
 		/// <summary>
 		/// Called when the root cache item has been removed from the cache.
 		/// </summary>
-		/// <param name="key">The key of the cache item that was removed.</param>
-		/// <param name="value">The value of the cache item that was removed.</param>
-		/// <param name="reason">The <see cref="CacheItemRemovedReason"/> for the removal of the
-		/// item from the cache.</param>
+		/// <param name="args">The arguments for the removal of the item from the cache.</param>
 		/// <remarks>
 		/// <para>Since all cache items are dependent on the root cache item, if this method is called,
 		/// all the cache items for this region have also been removed.</para>
 		/// </remarks>
-		private void RootCacheItemRemovedCallback(string key, object value, CacheItemRemovedReason reason)
+		private void RootCacheItemRemovedCallback(CacheEntryRemovedArguments args)
 		{
 			Log.Debug("Cache items for region '{0}' have been removed from the cache for the following reason : {1:g}",
-			          _name, reason);
+			          _name, args.RemovedReason);
 
 			//lets us know that we need to reestablish the root cache item for this region
 			_isRootItemCached = false;

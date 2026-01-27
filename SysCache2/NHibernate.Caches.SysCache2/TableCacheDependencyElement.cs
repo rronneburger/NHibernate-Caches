@@ -45,7 +45,7 @@ namespace NHibernate.Caches.SysCache2
 		}
 
 		/// <summary>
-		/// The name of the <see cref="System.Web.Configuration.SqlCacheDependencyDatabase"/> that
+		/// The name of the database entry that
 		/// contains the connection information for the table monitor.
 		/// </summary>
 		public string DatabaseEntryName

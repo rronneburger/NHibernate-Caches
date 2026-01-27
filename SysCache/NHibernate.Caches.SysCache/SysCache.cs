@@ -1,7 +1,7 @@
 #region License
 
 //
-//  SysCache - A cache provider for NHibernate using System.Web.Caching.Cache.
+//  SysCache - A cache provider for NHibernate using System.Runtime.Caching.MemoryCache.
 //
 //  This library is free software; you can redistribute it and/or
 //  modify it under the terms of the GNU Lesser General Public
@@ -22,8 +22,7 @@
 
 using System;
 using System.Collections;
-using System.Web;
-using System.Web.Caching;
+using System.Runtime.Caching;
 using NHibernate.Cache;
 using System.Collections.Generic;
 using System.Threading;
@@ -34,7 +33,7 @@ namespace NHibernate.Caches.SysCache
 {
 	// 6.0 TODO: replace that class by its base
 	/// <summary>
-	/// Pluggable cache implementation using the System.Web.Caching classes.
+	/// Pluggable cache implementation using the System.Runtime.Caching.MemoryCache.
 	/// </summary>
 	public class SysCache : SysCacheBase,
 #pragma warning disable 618
@@ -146,13 +145,13 @@ namespace NHibernate.Caches.SysCache
 	}
 
 	/// <summary>
-	/// Pluggable cache implementation using the System.Web.Caching classes.
+	/// Pluggable cache implementation using the System.Runtime.Caching.MemoryCache.
 	/// </summary>
 	public abstract class SysCacheBase : CacheBase
 	{
 		private static readonly INHibernateLogger Log = NHibernateLogger.For(typeof(SysCache));
 		private string _regionPrefix;
-		private readonly System.Web.Caching.Cache _cache;
+		private readonly MemoryCache _cache;
 
 		// The name of the cache key used to clear the cache. All cached items depend on this key.
 		private readonly string _rootCacheKey;
@@ -203,7 +202,7 @@ namespace NHibernate.Caches.SysCache
 		public SysCacheBase(string region, IDictionary<string, string> properties)
 		{
 			Region = region;
-			_cache = HttpRuntime.Cache;
+			_cache = MemoryCache.Default;
 			Configure(properties);
 
 			_rootCacheKey = GenerateRootCacheKey();
@@ -331,23 +330,23 @@ namespace NHibernate.Caches.SysCache
 				switch (ps)
 				{
 					case "abovenormal":
-						return CacheItemPriority.AboveNormal;
+						return CacheItemPriority.Default; // Closest mapping
 					case "belownormal":
-						return CacheItemPriority.BelowNormal;
+						return CacheItemPriority.Default; // Closest mapping
 					case "default":
 						return CacheItemPriority.Default;
 					case "high":
-						return CacheItemPriority.High;
+						return CacheItemPriority.Default; // Closest mapping
 					case "low":
-						return CacheItemPriority.Low;
+						return CacheItemPriority.Default; // Closest mapping
 					case "normal":
-						return CacheItemPriority.Normal;
+						return CacheItemPriority.Default; // Closest mapping
 					case "notremovable":
 						return CacheItemPriority.NotRemovable;
 				}
 			}
 			Log.Error("priority value out of range: {0}", priorityString);
-			throw new IndexOutOfRangeException("Priority must be a valid System.Web.Caching.CacheItemPriority; was: " +
+			throw new IndexOutOfRangeException("Priority must be a valid System.Runtime.Caching.CacheItemPriority; was: " +
 				priorityString);
 		}
 
@@ -401,14 +400,22 @@ namespace NHibernate.Caches.SysCache
 				StoreRootCacheKey();
 			}
 
-			_cache.Insert(
-				cacheKey,
-				new DictionaryEntry(key, value),
-				new CacheDependency(null, new[] { _rootCacheKey }),
-				UseSlidingExpiration ? System.Web.Caching.Cache.NoAbsoluteExpiration : DateTime.UtcNow.Add(Expiration),
-				UseSlidingExpiration ? Expiration : System.Web.Caching.Cache.NoSlidingExpiration,
-				Priority,
-				null);
+			var policy = new CacheItemPolicy
+			{
+				Priority = Priority
+			};
+			policy.ChangeMonitors.Add(_cache.CreateCacheEntryChangeMonitor(new[] { _rootCacheKey }));
+
+			if (UseSlidingExpiration)
+			{
+				policy.SlidingExpiration = Expiration;
+			}
+			else
+			{
+				policy.AbsoluteExpiration = DateTimeOffset.UtcNow.Add(Expiration);
+			}
+
+			_cache.Set(cacheKey, new DictionaryEntry(key, value), policy);
 		}
 
 		/// <inheritdoc />
@@ -438,7 +445,7 @@ namespace NHibernate.Caches.SysCache
 			return GetCacheKey(Guid.NewGuid());
 		}
 
-		private void RootCacheItemRemoved(string key, object value, CacheItemRemovedReason reason)
+		private void RootCacheItemRemoved(CacheEntryRemovedArguments args)
 		{
 			_rootCacheKeyStored = false;
 		}
@@ -446,14 +453,11 @@ namespace NHibernate.Caches.SysCache
 		private void StoreRootCacheKey()
 		{
 			_rootCacheKeyStored = true;
-			_cache.Add(
-				_rootCacheKey,
-				_rootCacheKey,
-				null,
-				System.Web.Caching.Cache.NoAbsoluteExpiration,
-				System.Web.Caching.Cache.NoSlidingExpiration,
-				CacheItemPriority.Default,
-				RootCacheItemRemoved);
+			var policy = new CacheItemPolicy
+			{
+				RemovedCallback = RootCacheItemRemoved
+			};
+			_cache.Set(_rootCacheKey, _rootCacheKey, policy);
 		}
 
 		private void RemoveRootCacheKey()
